@@ -1,6 +1,31 @@
 // ======================================================
 // XIAO ML KIT (OR XIAO ESP32S3 SENSE)
-// FULL VISION ML  — v44
+// COMBINED VISION + SOUND ML — firmware v009
+// v009 changes vs v004:
+//   Camera fix. setup() used an uninitialised camera_config_t and never checked
+//   esp_camera_init(), so the camera could fail with "Camera frame failed - retrying" in
+//   Collect and Infer. Now: zeroed config, frame buffers in PSRAM, GRAB_LATEST, init result
+//   and a test grab printed on Serial, 10 MHz XCLK fallback, and automatic camera re-init
+//   after 10 failed grabs in a row (myCameraInit / myCameraGetFrame).
+// --- v004 notes ---
+// v004 changes vs v003:
+//   1. Menu keys are single characters: 0-9, then A, B, C ... (L and T are skipped because
+//      't' = next and 'l' = select). Item 1 = '0', item 10 = '9', item 11 = 'A'.
+//   2. Class names are read from /header/myVisConfig.json and /header/mySndConfig.json
+//      (written by the web pages) at boot and before every menu action, so the OLED menu,
+//      serial output and SD folder names follow the names set in the web pages.
+//      The number of names must equal VIS_NUM_CLASSES / SND_NUM_CLASSES, else the compiled
+//      names are kept.
+// --- v003 notes ---
+// (vision half = FULL VISION ML v44, sound half = WAKE WORD ML v13)
+// v003 changes vs v002-era combined sketch:
+//   1. Weight loaders refuse a .bin whose size does not match the compiled layout
+//      (matches the web pages, which also refuse wrong-size files).
+//   2. Weights are re-read from the SD card each time Infer / Combined Infer starts,
+//      so weights saved by the web page work without a reboot.
+//   3. Sound spectrogram: negative mel low-edge weights could make energy < 0 and
+//      log10 -> NaN. Energy is now clamped at 0 (same fix as the sound web page).
+// Weight files: /header/myVisWeights.bin  and  /header/mySndWeights.bin
 //
 //
 // Small Image collection, training, inference for education and proof of concept
@@ -147,6 +172,13 @@ void myResetMenuState();
 void myHandleMenuNavigation();
 void mySndInferTask(void* pvParameters);
 void myActionCombinedInfer();
+char myMenuKey(int idx);
+int myMenuKeyToIndex(char c);
+String myReadSmallFile(const char* path);
+bool myParseClassesFromJson(const String& json, String* out, int n);
+void myLoadClassConfigs(bool verbose);
+bool myCameraInit(bool verbose);
+camera_fb_t* myCameraGetFrame();
 
 
 // ======================================================
@@ -559,6 +591,16 @@ bool myVisLoadWeights() {
   Serial.println("Loading weights from SD...");
   File f = SD.open("/header/myVisWeights.bin", FILE_READ);
   if (!f) return false;
+  {
+    size_t expected = (size_t)(VIS_CONV1_WEIGHTS + VIS_CONV1_FILTERS + VIS_CONV2_WEIGHTS +
+                               VIS_CONV2_FILTERS + VIS_OUTPUT_WEIGHTS + VIS_NUM_CLASSES) * 4;
+    if (f.size() != expected) {
+      Serial.printf("Vision weights REFUSED: file is %u bytes, layout needs %u (check VIS_NUM_CLASSES)\n",
+                    (unsigned)f.size(), (unsigned)expected);
+      f.close();
+      return false;
+    }
+  }
   f.read((uint8_t*)myVisConv1_w, VIS_CONV1_WEIGHTS*4); 
   f.read((uint8_t*)myVisConv1_b, VIS_CONV1_FILTERS*4);
   f.read((uint8_t*)myVisConv2_w, VIS_CONV2_WEIGHTS*4); 
@@ -768,7 +810,7 @@ void myVisActionCollect(int classIdx) {
       lastCameraDrain = now;
 
       if (!shouldCapture) {  // don't grab preview frames if a capture is pending
-        camera_fb_t* fb = esp_camera_fb_get();
+        camera_fb_t* fb = myCameraGetFrame();
         if (fb) {
           // Only pay for RGB conversion when the OLED is due for a refresh (250ms)
           if (now - lastOLED > 250 && myVisRgbBuffer) {
@@ -814,7 +856,7 @@ void myVisActionCollect(int classIdx) {
     // --- CAPTURE ---
     if (shouldCapture) {
       shouldCapture = false;
-      camera_fb_t* fb = esp_camera_fb_get();
+      camera_fb_t* fb = myCameraGetFrame();
       if (fb) {
         String fileName = path + "/img_" + String(millis()) + ".jpg";
         File file = SD.open(fileName, FILE_WRITE);
@@ -1437,7 +1479,7 @@ void myVisActionInfer() {
     }
     
     // Get camera frame
-    camera_fb_t * fb = esp_camera_fb_get();
+    camera_fb_t * fb = myCameraGetFrame();
     if (!fb) {
       Serial.println("Camera frame failed - retrying");
       delay(10);
@@ -2115,6 +2157,7 @@ bool mySndComputeSpectrogram() {
         float w = (mySndMelFbHi[m] - b) / (mySndMelFbHi[m] - mySndMelFbCtr[m] + 1e-8f);
         energy += w * mySndSpectroPower[b];
       }
+      if (energy < 0) energy = 0;            // v003: negative low-edge weights could give NaN
       float logE = log10f(energy + 1e-6f);   // +1e-6 avoids -inf on silence
       mySndInputBuffer[fr * SND_MEL_BINS + m] = logE;
       if (logE < clipMin) clipMin = logE;
@@ -2265,6 +2308,16 @@ bool mySndLoadWeights() {
   if (!mySndSDavailable || !SD.exists("/header/mySndWeights.bin")) return false;
   File f = SD.open("/header/mySndWeights.bin", FILE_READ);
   if (!f) return false;
+  {
+    size_t expected = (size_t)(SND_CONV1_WEIGHTS + SND_CONV1_FILTERS + SND_CONV2_WEIGHTS +
+                               SND_CONV2_FILTERS + SND_OUTPUT_WEIGHTS + SND_NUM_CLASSES) * 4;
+    if (f.size() != expected) {
+      Serial.printf("Sound weights REFUSED: file is %u bytes, layout needs %u (check SND_NUM_CLASSES)\n",
+                    (unsigned)f.size(), (unsigned)expected);
+      f.close();
+      return false;
+    }
+  }
   f.read((uint8_t*)mySndConv1_w,  SND_CONV1_WEIGHTS  * 4);
   f.read((uint8_t*)mySndConv1_b,  SND_CONV1_FILTERS  * 4);
   f.read((uint8_t*)mySndConv2_w,  SND_CONV2_WEIGHTS  * 4);
@@ -3303,22 +3356,106 @@ String myMenuLabel(int idx) {
 }
 
 void myExecuteMenuItem(int idx) {
+  myLoadClassConfigs(false);   // v004: pick up class names saved by the web pages
   if (idx <= VIS_NUM_CLASSES)                 myVisActionCollect(idx - 1);
   else if (idx == myVisTrainItem)             myVisActionTrain();
-  else if (idx == myVisInferItem)             myVisActionInfer();
+  else if (idx == myVisInferItem)           { myVisLoadWeights(); myVisActionInfer(); }
   else if (idx <= mySndCollectBase + SND_NUM_CLASSES)
                                                mySndActionCollect(idx - mySndCollectBase - 1);
   else if (idx == mySndTrainItem)             mySndActionTrain();
-  else if (idx == mySndInferItem)             mySndActionInfer();
-  else                                        myActionCombinedInfer();
+  else if (idx == mySndInferItem)           { mySndLoadWeights(); mySndActionInfer(); }
+  else                                      { myVisLoadWeights(); mySndLoadWeights(); myActionCombinedInfer(); }
+}
+
+// ======================================================
+// v004: single-character menu keys and class names from SD config files
+// Keys: 0-9 then A-Z. L and T are skipped because 't' = next and 'l' = select.
+// Item 1 = key '0', item 10 = key '9', item 11 = key 'A', and so on.
+// ======================================================
+const char* MY_MENU_KEYS = "0123456789ABCDEFGHIJKMNOPQRSUVWXYZ";
+
+char myMenuKey(int idx) {
+  int k = idx - 1;
+  if (k < 0 || k >= (int)strlen(MY_MENU_KEYS)) return '?';
+  return MY_MENU_KEYS[k];
+}
+
+int myMenuKeyToIndex(char c) {
+  if (c >= 'a' && c <= 'z') c = c - 'a' + 'A';
+  if (c <= ' ') return 0;
+  const char* p = strchr(MY_MENU_KEYS, c);
+  if (!p) return 0;
+  return (int)(p - MY_MENU_KEYS) + 1;
+}
+
+String myReadSmallFile(const char* path) {
+  String s;
+  if (!SD.exists(path)) return s;
+  File f = SD.open(path, FILE_READ);
+  if (!f) return s;
+  while (f.available() && s.length() < 3000) s += (char)f.read();
+  f.close();
+  return s;
+}
+
+// Finds  "classes": [ "a", "b", ... ]  in a small JSON text. Only accepts it when the
+// number of names equals n (the compiled class count); otherwise leaves `out` untouched.
+bool myParseClassesFromJson(const String& json, String* out, int n) {
+  int k = json.indexOf("\"classes\"");
+  if (k < 0) return false;
+  int a = json.indexOf('[', k);
+  if (a < 0) return false;
+  int b = json.indexOf(']', a);
+  if (b < 0) return false;
+  for (int pass = 0; pass < 2; pass++) {
+    int pos = a, found = 0;
+    while (true) {
+      int q1 = json.indexOf('"', pos);
+      if (q1 < 0 || q1 > b) break;
+      int q2 = json.indexOf('"', q1 + 1);
+      if (q2 < 0 || q2 > b) break;
+      if (q2 > q1 + 1) {
+        if (pass == 1 && found < n) out[found] = json.substring(q1 + 1, q2);
+        found++;
+      }
+      pos = q2 + 1;
+    }
+    if (pass == 0 && found != n) {
+      Serial.printf("  config has %d class names but the firmware expects %d - names ignored\n", found, n);
+      return false;
+    }
+  }
+  return true;
+}
+
+// Reads /header/myVisConfig.json and /header/mySndConfig.json (written by the web pages)
+// and replaces the compiled class names. Called at boot and before every menu action.
+void myLoadClassConfigs(bool verbose) {
+  if (!myVisSDavailable) return;
+  String vj = myReadSmallFile("/header/myVisConfig.json");
+  if (vj.length() > 0 && myParseClassesFromJson(vj, myVisClassLabels, VIS_NUM_CLASSES)) {
+    if (verbose) {
+      Serial.print("Vision class names from myVisConfig.json:");
+      for (int i = 0; i < VIS_NUM_CLASSES; i++) Serial.printf(" %s", myVisClassLabels[i].c_str());
+      Serial.println();
+    }
+  } else if (verbose) Serial.println("Vision class names: using compiled defaults");
+  String sj = myReadSmallFile("/header/mySndConfig.json");
+  if (sj.length() > 0 && myParseClassesFromJson(sj, mySndClassLabels, SND_NUM_CLASSES)) {
+    if (verbose) {
+      Serial.print("Sound class names from mySndConfig.json:");
+      for (int i = 0; i < SND_NUM_CLASSES; i++) Serial.printf(" %s", mySndClassLabels[i].c_str());
+      Serial.println();
+    }
+  } else if (verbose) Serial.println("Sound class names: using compiled defaults");
 }
 
 void myDrawMenu() {
   Serial.println("\n=== COMBINED MENU ===");
   for (int i = 1; i <= myTotalItems; i++) {
-    Serial.printf("%s %d. %s\n", i == myMenuIndex ? " >" : "  ", i, myMenuLabel(i).c_str());
+    Serial.printf("%s %c. %s\n", i == myMenuIndex ? " >" : "  ", myMenuKey(i), myMenuLabel(i).c_str());
   }
-  Serial.println("t=next  l=select  1-9,a=10,b=11=direct");
+  Serial.println("t=next  l=select  or press the item's key (0-9, then A, B, C...)");
 
   u8g2.firstPage();
   do {
@@ -3346,10 +3483,7 @@ void myHandleMenuNavigation() {
   unsigned long now = millis();
   if (!myIsSelected && Serial.available()) {
     char c = Serial.read();
-    int  directIndex = 0;
-    if (c >= '1' && c <= '9')      directIndex = c - '0';        // 1-9
-    else if (c == 'a' || c == 'A') directIndex = 10;              // 10th item
-    else if (c == 'b' || c == 'B') directIndex = 11;              // 11th item
+    int  directIndex = myMenuKeyToIndex(c);                      // 0-9, A, B, C ... (not L / T)
 
     if (directIndex > 0) {
       if (directIndex <= myTotalItems) {
@@ -3536,7 +3670,7 @@ void myActionCombinedInfer() {
       if (c == 't' || c == 'T' || c == 'l' || c == 'L') break;
     }
 
-    camera_fb_t* fb = esp_camera_fb_get();
+    camera_fb_t* fb = myCameraGetFrame();
     if (!fb) { delay(10); continue; }
 
     if (fmt2rgb888(fb->buf, fb->len, PIXFORMAT_JPEG, myVisRgbBuffer)) {
@@ -3663,11 +3797,83 @@ void myActionCombinedInfer() {
 // ██  SETUP & LOOP  (merged)                                                    ██
 // ██████████████████████████████████████████████████████████████████████████████
 
+// ======================================================
+// v009: robust camera init + frame grab
+// The old setup() used an uninitialised camera_config_t (grab_mode, fb_location and other
+// fields held stack garbage) and never checked esp_camera_init(). Now the struct is zeroed,
+// frame buffers are forced into PSRAM, the init result is printed, a test grab proves
+// frames really arrive, and it falls back to a 10 MHz XCLK if 20 MHz gives no frames.
+// ======================================================
+static int myCamFailCount = 0;
+
+bool myCameraInit(bool verbose) {
+  const uint32_t myCamFreqs[2] = {20000000, 10000000};
+  for (int t = 0; t < 2; t++) {
+    camera_config_t config;
+    memset(&config, 0, sizeof(config));
+    config.ledc_channel = LEDC_CHANNEL_0;
+    config.ledc_timer = LEDC_TIMER_0;
+    config.pin_d0 = Y2_GPIO_NUM; config.pin_d1 = Y3_GPIO_NUM;
+    config.pin_d2 = Y4_GPIO_NUM; config.pin_d3 = Y5_GPIO_NUM;
+    config.pin_d4 = Y6_GPIO_NUM; config.pin_d5 = Y7_GPIO_NUM;
+    config.pin_d6 = Y8_GPIO_NUM; config.pin_d7 = Y9_GPIO_NUM;
+    config.pin_xclk = XCLK_GPIO_NUM; config.pin_pclk = PCLK_GPIO_NUM;
+    config.pin_vsync = VSYNC_GPIO_NUM; config.pin_href = HREF_GPIO_NUM;
+    config.pin_sccb_sda = SIOD_GPIO_NUM; config.pin_sccb_scl = SIOC_GPIO_NUM;
+    config.pin_pwdn = PWDN_GPIO_NUM; config.pin_reset = RESET_GPIO_NUM;
+    config.xclk_freq_hz = myCamFreqs[t];
+    config.pixel_format = PIXFORMAT_JPEG;
+    config.frame_size = FRAMESIZE_240X240;
+    config.jpeg_quality = 12;
+    config.fb_count = 2;
+    config.fb_location = CAMERA_FB_IN_PSRAM;
+    config.grab_mode = CAMERA_GRAB_LATEST;
+
+    esp_err_t err = esp_camera_init(&config);
+    if (err != ESP_OK) {
+      Serial.printf("Camera init FAILED: error 0x%x at %lu Hz (PSRAM found: %d)\n",
+                    (unsigned)err, (unsigned long)myCamFreqs[t], (int)psramFound());
+      esp_camera_deinit();
+      continue;
+    }
+    sensor_t* s = esp_camera_sensor_get();
+    if (s != NULL) s->set_hmirror(s, 1);
+
+    for (int i = 0; i < 6; i++) {          // test grab: do real frames arrive?
+      camera_fb_t* fb = esp_camera_fb_get();
+      if (fb) {
+        if (verbose) Serial.printf("Camera OK at %lu MHz (test frame %u bytes)\n",
+                                   (unsigned long)(myCamFreqs[t] / 1000000), (unsigned)fb->len);
+        esp_camera_fb_return(fb);
+        myCamFailCount = 0;
+        return true;
+      }
+      delay(100);
+    }
+    Serial.printf("Camera init ok but NO frames at %lu Hz - check ribbon cable / camera board\n",
+                  (unsigned long)myCamFreqs[t]);
+    esp_camera_deinit();
+  }
+  return false;
+}
+
+// Drop-in for esp_camera_fb_get(): after 10 failed grabs in a row it re-initialises the camera.
+camera_fb_t* myCameraGetFrame() {
+  camera_fb_t* fb = esp_camera_fb_get();
+  if (fb) { myCamFailCount = 0; return fb; }
+  if (++myCamFailCount >= 10) {
+    Serial.println("Camera: 10 failed grabs in a row - re-initialising camera");
+    myCamFailCount = 0;
+    myCameraInit(true);
+  }
+  return nullptr;
+}
+
 void setup() {
   Serial.begin(115200);
   while (!Serial && millis() < 3000);
   delay(500);
-  Serial.println("\n=== XIAO ESP32-S3 Combined Vision+Sound ML ===");
+  Serial.println("\n=== XIAO ESP32-S3 Combined Vision+Sound ML v009 ===");
   Serial.printf("Heap: %d  PSRAM: %d\n", ESP.getFreeHeap(), ESP.getFreePsram());
 
   pinMode(A0, INPUT);
@@ -3694,24 +3900,14 @@ void setup() {
   myVisRgbBuffer = (uint8_t*)ps_malloc(240 * 240 * 3);
   if (!myVisRgbBuffer) Serial.println("Failed to allocate RGB buffer!");
 
-  camera_config_t config;
-  config.ledc_channel = LEDC_CHANNEL_0;
-  config.ledc_timer = LEDC_TIMER_0;
-  config.pin_d0 = Y2_GPIO_NUM; config.pin_d1 = Y3_GPIO_NUM;
-  config.pin_d2 = Y4_GPIO_NUM; config.pin_d3 = Y5_GPIO_NUM;
-  config.pin_d4 = Y6_GPIO_NUM; config.pin_d5 = Y7_GPIO_NUM;
-  config.pin_d6 = Y8_GPIO_NUM; config.pin_d7 = Y9_GPIO_NUM;
-  config.pin_xclk = XCLK_GPIO_NUM; config.pin_pclk = PCLK_GPIO_NUM;
-  config.pin_vsync = VSYNC_GPIO_NUM; config.pin_href = HREF_GPIO_NUM;
-  config.pin_sccb_sda = SIOD_GPIO_NUM; config.pin_sccb_scl = SIOC_GPIO_NUM;
-  config.pin_pwdn = PWDN_GPIO_NUM; config.pin_reset = RESET_GPIO_NUM;
-  config.xclk_freq_hz = 20000000; config.pixel_format = PIXFORMAT_JPEG;
-  config.frame_size = FRAMESIZE_240X240; config.jpeg_quality = 12;
-  config.fb_count = 1;
-  esp_camera_init(&config);
-  Serial.println("Camera initialized");
-  sensor_t* s = esp_camera_sensor_get();
-  if (s != NULL) s->set_hmirror(s, 1);
+  if (!myCameraInit(true)) {
+    Serial.println("CAMERA NOT WORKING - vision Collect/Infer will fail. Check Tools > PSRAM: OPI PSRAM, the camera ribbon, and the messages above.");
+    u8g2.firstPage();
+    do { u8g2.setFont(u8g2_font_6x10_tf); u8g2.drawStr(0, 15, "CAMERA FAIL"); } while (u8g2.nextPage());
+    delay(2500);
+  } else {
+    Serial.println("Camera initialized");
+  }
 
   esp_log_level_set("*", ESP_LOG_WARN);
   esp_log_level_set("esp_camera", ESP_LOG_ERROR);
@@ -3734,6 +3930,7 @@ void setup() {
 
   if (myVisLoadWeights()) Serial.println("Vision: SD weights loaded");
   if (mySndLoadWeights()) Serial.println("Sound:  SD weights loaded");
+  myLoadClassConfigs(true);   // v004: class names from header/myVisConfig.json + mySndConfig.json
 
   gSoundResultMutex = xSemaphoreCreateMutex();
 
