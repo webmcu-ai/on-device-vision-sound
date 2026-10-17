@@ -1,6 +1,17 @@
 // ======================================================
 // XIAO ML KIT (OR XIAO ESP32S3 SENSE)
-// COMBINED VISION + SOUND ML — firmware v009
+// COMBINED VISION + SOUND ML — firmware v010
+// v010 changes vs v009:
+//   1. Debug frames over Serial for the web pages ('@F ...' lines, base64 payloads):
+//        Vision Infer   every 10th frame : JPEG + last-conv heatmap + probs + logits + centre input pixel
+//        Vision Collect each saved image : JPEG
+//        Sound Infer    each clip        : raw audio + heatmap + probs + logits + input summary
+//      OFF by default. A web page turns it on by sending 'D' (repeated every 5 s as a heartbeat) and
+//      off with 'd'. With no 'D' for 15 s the device stops sending on its own.
+//   2. 'D' and 'd' are consumed by myReadSerialChar() everywhere Serial is read, and 'D' is no longer a
+//      menu key (menu keys now skip D, L and T): item 14 is key 'E' instead of 'D'.
+//   3. Every new function and global is forward-declared near the top (Arduino IDE).
+//   Combined Infer does not send debug frames (it runs the sound model on core 0).
 // v009 changes vs v004:
 //   Camera fix. setup() used an uninitialised camera_config_t and never checked
 //   esp_camera_init(), so the camera could fail with "Camera frame failed - retrying" in
@@ -72,6 +83,7 @@
 
 #include "esp_camera.h"
 #include "img_converters.h"
+#include "mbedtls/base64.h"   // v010: debug frames
 #include "FS.h"
 #include "SD.h"
 #include "SPI.h"
@@ -179,6 +191,22 @@ bool myParseClassesFromJson(const String& json, String* out, int n);
 void myLoadClassConfigs(bool verbose);
 bool myCameraInit(bool verbose);
 camera_fb_t* myCameraGetFrame();
+
+
+// ======================================================
+// v010: DEBUG FRAME SUPPORT - forward declarations and globals
+// ======================================================
+char myReadSerialChar();
+bool myDebugActive();
+void myDebugBase64(const uint8_t* data, size_t len);
+void myDebugPrintCsv(const float* v, int n, int decimals);
+void myDebugVisFrame(char kind, camera_fb_t* fb, int pred, const float* logits);
+void mySndDebugFrame(int pred, const float* logits);
+
+bool myDebugOn = false;                 // set by 'D', cleared by 'd'
+unsigned long myDebugLastMs = 0;        // time of the last 'D' (heartbeat)
+unsigned long myDebugFrameN = 0;        // frame counter sent in every frame
+const unsigned long myDebugTimeoutMs = 15000;   // no 'D' for this long -> stop sending
 
 
 // ======================================================
@@ -832,7 +860,7 @@ void myVisActionCollect(int classIdx) {
 
     // --- SERIAL INPUT ---
     if (Serial.available()) {
-      char c = Serial.read();
+      char c = myReadSerialChar();
       if (c == 'l' || c == 'L') {
         myVisResetMenuState();
         return;
@@ -866,6 +894,7 @@ void myVisActionCollect(int classIdx) {
           counts[classIdx]++;
           Serial.printf("Saved: %s (Total: %d)\n", fileName.c_str(), counts[classIdx]);
           myVisDisplayImageOnOLED(fb, counts[classIdx]);  // shows count badge
+          myDebugVisFrame('C', fb, -1, nullptr);   // v010
           delay(300);
           lastOLED = millis();  // don't immediately overwrite the snapshot with LIVE
         }
@@ -1207,7 +1236,7 @@ void myVisActionTrain() {
     for(int batch=0; batch<totalBatches; batch++) {
       // Check for exit during training
       if (Serial.available()) {
-        char c = Serial.read();
+        char c = myReadSerialChar();
         // v43 FIX 4: accept 'l'/'L' as well as 'x'/'X' — consistent with all other modes
         if (c == 'x' || c == 'X' || c == 'l' || c == 'L') {
           Serial.println("Stopping training...");
@@ -1293,7 +1322,7 @@ void myVisActionTrain() {
             return;
           }
           if (Serial.available()) {
-            char c = Serial.read();
+            char c = myReadSerialChar();
             if (c == 'x' || c == 'X' || c == 'l' || c == 'L') {
               Serial.println("Stopping training...");
               myVisSaveWeights();
@@ -1375,7 +1404,7 @@ void myVisActionTrain() {
     Serial.println("  Touch:  1-2 taps=train again  3+taps=exit");
     while (true) {
       if (Serial.available()) {
-        char c = Serial.read();
+        char c = myReadSerialChar();
         // v43 FIX: added l/L as exit — was missing here (only x/X worked before)
         if (c == 'x' || c == 'X' || c == 'l' || c == 'L') {
           myVisResetMenuState();
@@ -1471,7 +1500,7 @@ void myVisActionInfer() {
     
     // Serial input check (fast, every frame)
     if (Serial.available()) {
-      char c = Serial.read();
+      char c = myReadSerialChar();
       if (c == 't' || c == 'T' || c == 'l' || c == 'L') {
         myVisResetMenuState();
         return;
@@ -1525,6 +1554,7 @@ void myVisActionInfer() {
       // Every 10th frame: draw live image + label overlay on OLED.
       // Done HERE while myVisRgbBuffer is still valid (before fb is returned).
       if (frameIndex == 9) {
+        myDebugVisFrame('I', fb, pred, myVisLogits);   // v010
         int oW = u8g2.getDisplayWidth();
         int oH = u8g2.getDisplayHeight();
         int scX = 240 / oW;
@@ -1664,7 +1694,7 @@ void myVisHandleMenuNavigation() {
   // SERIAL INPUT
   // --------------------------------------------------------------------------
   if (!myVisIsSelected && Serial.available()) {
-    char c = Serial.read();
+    char c = myReadSerialChar();
 
     // Single-digit direct selection (works for VIS_NUM_CLASSES up to 9+2=11 items via digit keys)
     if (c >= '1' && c <= '9') {
@@ -1846,6 +1876,7 @@ int16_t* mySndAudioBuffer = nullptr;
 // ======================================================
 float* mySndSpectroFrame = nullptr;   // SND_FFT_SIZE floats
 float* mySndSpectroPower = nullptr;   // SND_FFT_SIZE/2+1 floats
+float  mySndLastRange = 0;   // v010: raw log-energy range of the last spectrogram (debug frames)
 
 // ======================================================
 // ML WEIGHT / ACTIVATION / GRADIENT BUFFERS (PSRAM)
@@ -2171,6 +2202,7 @@ bool mySndComputeSpectrogram() {
 
   // Pass 2: normalise using true per-clip range
   float range = clipMax - clipMin;
+  mySndLastRange = range;   // v010
   if (range < 1.0f) range = 1.0f;   // floor: silence clips map to all-zero
   for (int i = 0; i < SND_MEL_FRAMES * SND_MEL_BINS; i++)
     mySndInputBuffer[i] = constrain((mySndInputBuffer[i] - clipMin) / range, 0.0f, 1.0f);
@@ -2607,7 +2639,7 @@ void mySndExecuteMenuItem(int idx) {
 void mySndHandleMenuNavigation() {
   unsigned long now = millis();
   if (!mySndIsSelected && Serial.available()) {
-    char c = Serial.read();
+    char c = myReadSerialChar();
     if (c >= '1' && c <= '9') {
       int n = c - '0';
       if (n <= mySndTotalItems) {
@@ -2692,7 +2724,7 @@ void mySndActionCollect(int classIdx) {
 
   while (true) {
     if (Serial.available()) {
-      char c = Serial.read();
+      char c = myReadSerialChar();
       if      (c == 'l' || c == 'L') { mySndResetMenuState(); return; }
       else if (c == 't' || c == 'T') shouldRecord = true;
     }
@@ -2893,7 +2925,7 @@ void mySndActionTrain() {
       for (int b = 0; b < batchesPerEpoch; b++) {
         // Exit check
         if (Serial.available()) {
-          char c = Serial.read();
+          char c = myReadSerialChar();
           if (c == 'l' || c == 'L' || c == 'x' || c == 'X') {
             mySndSaveWeights(); mySndWeightsTrained = true; mySndResetMenuState(); return;
           }
@@ -2963,7 +2995,7 @@ void mySndActionTrain() {
               mySndSaveWeights(); mySndWeightsTrained = true; mySndResetMenuState(); return;
             }
             if (Serial.available()) {
-              char c = Serial.read();
+              char c = myReadSerialChar();
               if (c == 'l' || c == 'L' || c == 'x' || c == 'X') {
                 mySndSaveWeights(); mySndWeightsTrained = true; mySndResetMenuState(); return;
               }
@@ -3067,7 +3099,7 @@ void mySndActionTrain() {
     Serial.println("T=train again  L=exit");
     while (true) {
       if (Serial.available()) {
-        char c = Serial.read();
+        char c = myReadSerialChar();
         if (c == 'l' || c == 'L' || c == 'x' || c == 'X') { mySndResetMenuState(); return; }
         else if (c == 't' || c == 'T') break;
       }
@@ -3118,7 +3150,7 @@ void mySndActionInfer() {
 
   while (true) {
     if (Serial.available()) {
-      char c = Serial.read();
+      char c = myReadSerialChar();
       if (c == 't' || c == 'T' || c == 'l' || c == 'L') { mySndResetMenuState(); return; }
     }
     if (mySndCheckTouchInput() != 0) { mySndResetMenuState(); return; }
@@ -3162,6 +3194,7 @@ void mySndActionInfer() {
               Serial.printf("  %s:%.0f%%", mySndClassLabels[i].c_str(), mySndDense_output[i] * 100);
             Serial.println();
 
+            mySndDebugFrame(lastPred, logits);   // v010
             // ---- OLED: class name + percent (top), bar chart (bottom) ----
             {
               const char* lbl = mySndClassLabels[lastPred].c_str();
@@ -3247,6 +3280,170 @@ void mySndActionInfer() {
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+
+
+// ======================================================
+// v010: DEBUG FRAMES OVER SERIAL
+// One text line per frame, fields separated by single spaces, no spaces inside a field:
+//   @F <kind> <n> <pred> <probs> <logits> <layout> <ctr|summary> <side|HxW> <heat|map b64> <payload b64>
+// Vision payload = camera JPEG.  Sound payload = 16000 int16 little-endian samples.
+// ======================================================
+// Every place that used to call Serial.read() now calls this. 'D' / 'd' are debug commands and are
+// swallowed (returns 0, which matches no menu or exit key); anything else is returned unchanged.
+char myReadSerialChar() {
+  char c = Serial.read();
+  if (c == 'D') { myDebugOn = true; myDebugLastMs = millis(); return 0; }
+  if (c == 'd') { myDebugOn = false; return 0; }
+  return c;
+}
+
+bool myDebugActive() {
+  return myDebugOn && (millis() - myDebugLastMs < myDebugTimeoutMs);
+}
+
+// Base64 straight to Serial in 768-byte chunks (a multiple of 3, so no padding mid-stream).
+void myDebugBase64(const uint8_t* data, size_t len) {
+  unsigned char out[1100];
+  size_t pos = 0;
+  while (pos < len) {
+    size_t n = len - pos;
+    if (n > 768) n = 768;
+    size_t olen = 0;
+    mbedtls_base64_encode(out, sizeof(out), &olen, data + pos, n);
+    Serial.write(out, olen);
+    pos += n;
+  }
+}
+
+void myDebugPrintCsv(const float* v, int n, int decimals) {
+  for (int i = 0; i < n; i++) {
+    if (i) Serial.print(',');
+    float x = v[i];
+    if (isnan(x) || isinf(x)) x = 0;
+    Serial.print(x, decimals);
+  }
+}
+
+// Vision frame. logits == nullptr means "no network output" (used for the saved-image frame, kind C).
+void myDebugVisFrame(char kind, camera_fb_t* fb, int pred, const float* logits) {
+  if (!myDebugActive() || fb == nullptr) return;
+  const int side  = VIS_CONV2_OUTPUT_SIZE;
+  const int cells = side * side;
+  static float   heatF[VIS_CONV2_OUTPUT_SIZE * VIS_CONV2_OUTPUT_SIZE];
+  static uint8_t heatB[VIS_CONV2_OUTPUT_SIZE * VIS_CONV2_OUTPUT_SIZE];
+  bool haveNet = (logits != nullptr && myVisDense_output != nullptr && myVisConv2_output != nullptr);
+
+  myDebugFrameN++;
+  Serial.print("@F ");
+  Serial.print(kind);
+  Serial.print(' ');
+  Serial.print(myDebugFrameN);
+  Serial.print(' ');
+  Serial.print(haveNet ? pred : -1);
+  Serial.print(' ');
+  if (haveNet) {
+    myDebugPrintCsv(myVisDense_output, VIS_NUM_CLASSES, 5);   // probabilities
+    Serial.print(' ');
+    myDebugPrintCsv(logits, VIS_NUM_CLASSES, 4);              // clipped dense output before softmax
+    Serial.print(' ');
+  } else {
+    Serial.print("- - ");
+  }
+  Serial.printf("%dx%dx%d ", VIS_INPUT_SIZE, VIS_CONV1_FILTERS, VIS_CONV2_FILTERS);   // layout key
+  if (haveNet && myVisInputBuffer != nullptr) {
+    int c0 = ((VIS_INPUT_SIZE / 2) * VIS_INPUT_SIZE + VIS_INPUT_SIZE / 2) * 3;       // centre input pixel RGB
+    myDebugPrintCsv(&myVisInputBuffer[c0], 3, 4);
+  } else {
+    Serial.print('-');
+  }
+  Serial.print(' ');
+  Serial.print(haveNet ? side : 0);
+  Serial.print(' ');
+  if (haveNet) {
+    float lo = 1e30f, hi = -1e30f;
+    for (int i = 0; i < cells; i++) {                         // max over the conv2 filters
+      float m = myVisConv2_output[i];
+      for (int f = 1; f < VIS_CONV2_FILTERS; f++) {
+        float v = myVisConv2_output[f * cells + i];
+        if (v > m) m = v;
+      }
+      heatF[i] = m;
+      if (m < lo) lo = m;
+      if (m > hi) hi = m;
+    }
+    float span = hi - lo;
+    if (span < 1e-9f) span = 1.0f;
+    for (int i = 0; i < cells; i++) {
+      float t = (heatF[i] - lo) / span;
+      if (t < 0) t = 0;
+      if (t > 1) t = 1;
+      heatB[i] = (uint8_t)(t * 255.0f + 0.5f);
+    }
+    myDebugBase64(heatB, cells);
+  } else {
+    Serial.print('-');
+  }
+  Serial.print(' ');
+  myDebugBase64(fb->buf, fb->len);
+  Serial.print('\n');
+}
+
+// Sound frame. Call right after mySndComputeSpectrogram() + mySndForwardPass() on the same clip.
+void mySndDebugFrame(int pred, const float* logits) {
+  if (!myDebugActive() || mySndAudioBuffer == nullptr || mySndInputBuffer == nullptr ||
+      mySndDense_output == nullptr || mySndConv2_output == nullptr || logits == nullptr) return;
+  const int cells = SND_CONV2_OUT_H * SND_CONV2_OUT_W;
+  static float   mapF[SND_CONV2_OUT_H * SND_CONV2_OUT_W];
+  static uint8_t mapB[SND_CONV2_OUT_H * SND_CONV2_OUT_W];
+
+  myDebugFrameN++;
+  Serial.print("@F I ");
+  Serial.print(myDebugFrameN);
+  Serial.print(' ');
+  Serial.print(pred);
+  Serial.print(' ');
+  myDebugPrintCsv(mySndDense_output, SND_NUM_CLASSES, 5);
+  Serial.print(' ');
+  myDebugPrintCsv(logits, SND_NUM_CLASSES, 4);
+  Serial.print(' ');
+  Serial.printf("%dx%dx%dx%d ", SND_MEL_FRAMES, SND_MEL_BINS, SND_CONV1_FILTERS, SND_CONV2_FILTERS);
+
+  // input summary: centre value, mean, raw log-energy range (what the page's modelInputView prints)
+  const int total = SND_MEL_FRAMES * SND_MEL_BINS;
+  float sum = 0;
+  for (int i = 0; i < total; i++) sum += mySndInputBuffer[i];
+  float summary[3];
+  summary[0] = mySndInputBuffer[(SND_MEL_FRAMES / 2) * SND_MEL_BINS + SND_MEL_BINS / 2];
+  summary[1] = sum / total;
+  summary[2] = mySndLastRange;
+  myDebugPrintCsv(summary, 3, 5);
+  Serial.print(' ');
+
+  Serial.printf("%dx%d ", SND_CONV2_OUT_H, SND_CONV2_OUT_W);   // map size, rows x cols
+  float lo = 1e30f, hi = -1e30f;
+  for (int i = 0; i < cells; i++) {                            // max over the conv2 filters
+    float m = mySndConv2_output[i];
+    for (int f = 1; f < SND_CONV2_FILTERS; f++) {
+      float v = mySndConv2_output[f * cells + i];
+      if (v > m) m = v;
+    }
+    mapF[i] = m;
+    if (m < lo) lo = m;
+    if (m > hi) hi = m;
+  }
+  float span = hi - lo;
+  if (span < 1e-9f) span = 1.0f;
+  for (int i = 0; i < cells; i++) {
+    float t = (mapF[i] - lo) / span;
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
+    mapB[i] = (uint8_t)(t * 255.0f + 0.5f);
+  }
+  myDebugBase64(mapB, cells);
+  Serial.print(' ');
+  myDebugBase64((const uint8_t*)mySndAudioBuffer, SND_CLIP_SAMPLES * sizeof(int16_t));
+  Serial.print('\n');
+}
 
 // ======================================================
 // UNIFIED TOP-LEVEL TOUCH INPUT (single physical A0 pad,
@@ -3369,10 +3566,10 @@ void myExecuteMenuItem(int idx) {
 
 // ======================================================
 // v004: single-character menu keys and class names from SD config files
-// Keys: 0-9 then A-Z. L and T are skipped because 't' = next and 'l' = select.
-// Item 1 = key '0', item 10 = key '9', item 11 = key 'A', and so on.
+// Keys: 0-9 then A-Z. L, T and D are skipped: 't' = next, 'l' = select, 'd'/'D' = debug frames off/on (v010).
+// Item 1 = key '0', item 10 = key '9', item 11 = key 'A', item 14 = key 'E', and so on.
 // ======================================================
-const char* MY_MENU_KEYS = "0123456789ABCDEFGHIJKMNOPQRSUVWXYZ";
+const char* MY_MENU_KEYS = "0123456789ABCEFGHIJKMNOPQRSUVWXYZ";   // v010: no D (debug on), no L / T
 
 char myMenuKey(int idx) {
   int k = idx - 1;
@@ -3482,8 +3679,8 @@ void myResetMenuState() {
 void myHandleMenuNavigation() {
   unsigned long now = millis();
   if (!myIsSelected && Serial.available()) {
-    char c = Serial.read();
-    int  directIndex = myMenuKeyToIndex(c);                      // 0-9, A, B, C ... (not L / T)
+    char c = myReadSerialChar();
+    int  directIndex = myMenuKeyToIndex(c);                      // 0-9, A, B, C ... (not L / T / D)
 
     if (directIndex > 0) {
       if (directIndex <= myTotalItems) {
@@ -3666,7 +3863,7 @@ void myActionCombinedInfer() {
 
   while (true) {
     if (Serial.available()) {
-      char c = Serial.read();
+      char c = myReadSerialChar();
       if (c == 't' || c == 'T' || c == 'l' || c == 'L') break;
     }
 
@@ -3873,7 +4070,7 @@ void setup() {
   Serial.begin(115200);
   while (!Serial && millis() < 3000);
   delay(500);
-  Serial.println("\n=== XIAO ESP32-S3 Combined Vision+Sound ML v009 ===");
+  Serial.println("\n=== XIAO ESP32-S3 Combined Vision+Sound ML v010 ===");
   Serial.printf("Heap: %d  PSRAM: %d\n", ESP.getFreeHeap(), ESP.getFreePsram());
 
   pinMode(A0, INPUT);
@@ -3938,6 +4135,7 @@ void setup() {
   myResetMenuState();
   delay(1000);
   Serial.println("Ready. Tap A0 to navigate, 3+ taps to select.");
+  Serial.println("Debug frames for the web pages: send D (heartbeat) to enable, d to disable.");
   myDrawMenu();
 }
 
