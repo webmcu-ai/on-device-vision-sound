@@ -1,12 +1,13 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>XIAO ESP32-S3 Vision + Sound SD trainer v009</title>
-<!-- webMCU-AI | Combined Vision + Sound SD trainer | v009 | MIT | By Jeremy Ellis
-     Pairs with firmware-v009.ino (combined Vision+Sound sketch).
-     One SD-card folder is picked here; the page looks for images/ and audio/ on the card and
-     only feeds the matching trainer. vision-index-v009 and sound-index-v009 run unchanged,
-     each in its own same-origin iframe (srcdoc) so their code cannot clash. Chrome or Edge, desktop. -->
+<title>XIAO ESP32-S3 Vision + Sound SD trainer v010</title>
+<!-- webMCU-AI | Combined Vision + Sound SD trainer | v010 | MIT | By Jeremy Ellis
+     Pairs with firmware-v010.ino (combined Vision+Sound sketch).
+     One SD-card folder is picked here (optional: the Serial monitors work without a card). Missing header/, images/ and audio/
+     folders, with the default class folders 0unknown, 1round, 2square, are created, so an empty card works.
+     vision-index-v010 and sound-index-v010 run unchanged, each in its own same-origin iframe (srcdoc) so their code cannot clash.
+     Chrome or Edge, desktop. -->
 <style>
 :root{--bg:#f5f6f8;--fg:#1b1f24;--bar:#fff;--bd:#d0d5dc;--ac:#0b5fff}
 @media(prefers-color-scheme:dark){:root{--bg:#14171b;--fg:#e6e9ed;--bar:#1d2126;--bd:#323840;--ac:#6ea0ff}}
@@ -25,21 +26,20 @@ main.v{grid-template-columns:1fr 0} main.s{grid-template-columns:0 1fr}
 .col{display:flex;flex-direction:column;min-width:0;min-height:0;border:1px solid var(--bd);border-radius:6px;overflow:hidden;background:var(--bar)}
 main.v .col.s,main.s .col.v{display:none}
 .col h2{margin:0;padding:.25rem .6rem;font-size:.85rem;border-bottom:1px solid var(--bd)}
-.col.idle iframe{opacity:.45}
 iframe{flex:1;width:100%;border:0;background:#fff}
 @media(max-width:900px){main{grid-template-columns:1fr!important;grid-auto-rows:92vh;overflow:auto}}
 </style></head><body>
 <header>
-  <h1>XIAO ESP32-S3 Vision + Sound SD trainer <small>v009</small></h1>
+  <h1>XIAO ESP32-S3 Vision + Sound SD trainer <small>v010</small></h1>
   <button class="pick" id="pick">📂 Pick SD card folder (root of the card)</button>
   <span class="seg" id="seg"><button data-m="" class="on">Side by side</button><button data-m="v">Vision only</button><button data-m="s">Sound only</button></span>
-  <span id="status">Pick the card root once. If it holds images/ the vision trainer loads; if it holds audio/ the sound trainer loads; a trainer with no matching folder stays empty. Only one column can hold the serial port at a time.</span>
+  <span id="status">Optional: pick the SD card root. An empty card is fine, the missing header/, images/ and audio/ folders (and default classes) are created for you. Each trainer's Serial monitor also works with no card. Only one column can hold the serial port at a time.</span>
 </header>
 <main id="main">
-  <section class="col v idle" id="colV"><h2>Vision (images/ , myVisWeights.bin)</h2>
+  <section class="col v" id="colV"><h2>Vision (images/ , myVisWeights.bin)</h2>
     <iframe id="fV" title="Vision trainer" allow="camera; serial; clipboard-write; fullscreen" srcdoc="&lt;!DOCTYPE html&gt;
 &lt;!--
-  webMCU-AI  |  Vision CNN SD trainer  |  v009
+  webMCU-AI  |  Vision CNN SD trainer  |  v010
   Companion page for the XIAO ESP32-S3 &quot;FULL VISION ML v44&quot; firmware.
   Reads images/&lt;class&gt;/*.jpg from the SD card, trains the same CNN (input size and filters selectable) in plain JS,
   analyzes the dataset, and writes header/myVisWeights.bin back for the device to load.
@@ -49,7 +49,7 @@ iframe{flex:1;width:100%;border:0;background:#fff}
 &lt;head&gt;
 &lt;meta charset=&quot;utf-8&quot;&gt;
 &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
-&lt;title&gt;Vision CNN SD trainer v009&lt;/title&gt;
+&lt;title&gt;Vision CNN SD trainer v010&lt;/title&gt;
 &lt;style&gt;
 :root{--bg:#11151b;--panel:#182029;--panel2:#1f2a36;--line:#2c3947;--text:#dde5ee;--mut:#8b9aac;--acc:#66d1bd;--acc-ink:#062a24;--bad:#ef6b73;--warn:#e9b44c;--ok:#7bd88f;--r:8px}
 *{box-sizing:border-box}
@@ -130,8 +130,8 @@ button.burst.recording{background:var(--bad);color:#fff;border-color:var(--bad);
 &lt;/head&gt;
 &lt;body&gt;
 &lt;header&gt;
-  &lt;h1&gt;Vision CNN SD trainer&lt;span class=&quot;ver&quot;&gt;v009&lt;/span&gt;&lt;/h1&gt;
-  &lt;p&gt;Browser companion for the XIAO ESP32-S3 FULL VISION ML firmware v009 (vision half = FULL VISION ML v44; class names are read from myVisConfig.json at boot): load the SD card, add images, review and clean them, train the same CNN, then write myVisWeights.bin back to the card.&lt;/p&gt;
+  &lt;h1&gt;Vision CNN SD trainer&lt;span class=&quot;ver&quot;&gt;v010&lt;/span&gt;&lt;/h1&gt;
+  &lt;p&gt;Browser companion for the XIAO ESP32-S3 FULL VISION ML firmware v010 (vision half = FULL VISION ML v44; class names are read from myVisConfig.json at boot): load the SD card, add images, review and clean them, train the same CNN, then write myVisWeights.bin back to the card.&lt;/p&gt;
   &lt;p&gt;Everything runs in this page. Images and weights never leave your computer.&lt;/p&gt;
 &lt;/header&gt;
 &lt;main&gt;
@@ -156,7 +156,7 @@ button.burst.recording{background:var(--bad);color:#fff;border-color:var(--bad);
     &lt;input type=&quot;text&quot; id=&quot;newClass&quot; placeholder=&quot;New class, e.g. 3Book&quot; aria-label=&quot;New class name&quot;&gt;
     &lt;button id=&quot;btnAddClass&quot;&gt;Add class&lt;/button&gt;
   &lt;/div&gt;
-  &lt;p class=&quot;note&quot;&gt;The sketch must be compiled with these values (firmware v009 refuses a weights file of the wrong size). Firmware v009 reads the class names from myVisConfig.json at boot, but their count must equal VIS_NUM_CLASSES, so adding or removing a class means editing VIS_NUM_CLASSES and myVisClassLabels[] and reflashing:&lt;/p&gt;
+  &lt;p class=&quot;note&quot;&gt;The sketch must be compiled with these values (firmware v010 refuses a weights file of the wrong size). Firmware v010 reads the class names from myVisConfig.json at boot, but their count must equal VIS_NUM_CLASSES, so adding or removing a class means editing VIS_NUM_CLASSES and myVisClassLabels[] and reflashing:&lt;/p&gt;
   &lt;pre id=&quot;fwLines&quot;&gt;(no classes yet)&lt;/pre&gt;
 
   &lt;h3&gt;Add images from the webcam&lt;/h3&gt;
@@ -278,7 +278,7 @@ button.burst.recording{background:var(--bad);color:#fff;border-color:var(--bad);
     &lt;label class=&quot;chk&quot;&gt;&lt;input type=&quot;checkbox&quot; id=&quot;zipImgs&quot; checked&gt; Include images in .zip&lt;/label&gt;
   &lt;/div&gt;
   &lt;div class=&quot;info&quot; id=&quot;saveInfo&quot;&gt;
-    &lt;div&gt;SD folder mode: the existing weights file is copied to &lt;b&gt;myVisWeights.bin.bak&lt;/b&gt; first, then the new one is written. A &lt;b&gt;myVisConfig.json&lt;/b&gt; with the class names and layout is written next to it for this page only (firmware v009 reads the class names from it at boot; it does not clash with the sound page&#x27;s file). Class count, input size and filter counts always come from the compiled sketch.&lt;/div&gt;
+    &lt;div&gt;SD folder mode: the existing weights file is copied to &lt;b&gt;myVisWeights.bin.bak&lt;/b&gt; first, then the new one is written. A &lt;b&gt;myVisConfig.json&lt;/b&gt; with the class names and layout is written next to it for this page only (firmware v010 reads the class names from it at boot; it does not clash with the sound page&#x27;s file). Class count, input size and filter counts always come from the compiled sketch.&lt;/div&gt;
     &lt;div&gt;Zip mode: Save weights keeps the model for the zip. Save .zip downloads header/myVisWeights.bin (and images if ticked) in the SD card layout.&lt;/div&gt;
   &lt;/div&gt;
   &lt;p class=&quot;note&quot; id=&quot;saveStatus&quot;&gt;&lt;/p&gt;
@@ -296,7 +296,7 @@ button.burst.recording{background:var(--bad);color:#fff;border-color:var(--bad);
   &lt;div class=&quot;row&quot;&gt;
     &lt;button id=&quot;btnSerial&quot; class=&quot;primary&quot;&gt;Connect&lt;/button&gt;
     &lt;span class=&quot;note&quot; id=&quot;serStatus&quot;&gt;Not connected.&lt;/span&gt;
-    &lt;label class=&quot;chk&quot;&gt;&lt;input type=&quot;checkbox&quot; id=&quot;serDebug&quot;&gt; Ask the device for debug frames (not supported by firmware v009; leave off)&lt;/label&gt;
+    &lt;label class=&quot;chk&quot;&gt;&lt;input type=&quot;checkbox&quot; id=&quot;serDebug&quot;&gt; Ask the device for debug frames (needs firmware v010)&lt;/label&gt;
   &lt;/div&gt;
   &lt;textarea id=&quot;serOut&quot; class=&quot;mono&quot; readonly aria-label=&quot;Serial output&quot;&gt;&lt;/textarea&gt;
   &lt;div class=&quot;row&quot;&gt;
@@ -305,7 +305,7 @@ button.burst.recording{background:var(--bad);color:#fff;border-color:var(--bad);
   &lt;/div&gt;
   &lt;p class=&quot;note&quot;&gt;115200 baud, a newline is added to what you send. Close the Arduino IDE serial monitor first. Opening the port can reboot the board, and a reboot may drop the connection: press Connect again. Desktop Chrome or Edge only.&lt;/p&gt;
   &lt;h3&gt;Device view&lt;/h3&gt;
-  &lt;p class=&quot;note&quot;&gt;With the box ticked, firmware-v009 sends its camera JPEG (and a heatmap) every 10th inference, each saved image, and a slow live preview while collecting. Frame lines are shown here instead of in the monitor text. With a model in memory that has the same layout, the page runs the same JPEG through its own copy of the network and compares.&lt;/p&gt;
+  &lt;p class=&quot;note&quot;&gt;With the box ticked, firmware-v010 sends its camera JPEG and a heatmap every 10th inference (Vision Infer) and each image it saves (Vision Collect). Frame lines are shown here instead of in the monitor text. With a model in memory that has the same layout, the page runs the same JPEG through its own copy of the network and compares.&lt;/p&gt;
   &lt;div class=&quot;row&quot;&gt;&lt;label class=&quot;chk&quot;&gt;&lt;input type=&quot;checkbox&quot; class=&quot;heatOverlay&quot; checked&gt; Overlay device heatmap on image&lt;/label&gt;&lt;/div&gt;
   &lt;div class=&quot;cam&quot;&gt;
     &lt;canvas id=&quot;devCanvas&quot; width=&quot;288&quot; height=&quot;288&quot;&gt;&lt;/canvas&gt;
@@ -363,7 +363,7 @@ button.burst.recording{background:var(--bad);color:#fff;border-color:var(--bad);
 
 &lt;script&gt;
 &#x27;use strict&#x27;;
-const VERSION = &#x27;v009&#x27;;
+const VERSION = &#x27;v010&#x27;;
 
 /* ==CORE START== (no DOM use below this line until CORE END) */
 
@@ -851,7 +851,7 @@ function renderSource() {
   if (state.wStatus === &#x27;refused&#x27;) h += &#x27;&lt;div class=&quot;bad&quot;&gt;Weights: &#x27; + esc(state.wNote) + &#x27;&lt;/div&gt;&#x27;;
   else if (state.wStatus === &#x27;loaded&#x27; || state.wStatus === &#x27;trained&#x27;) h += &#x27;&lt;div class=&quot;ok&quot;&gt;Weights: &#x27; + esc(state.wNote || &#x27;model in memory&#x27;) + &#x27;&lt;/div&gt;&#x27;;
   else h += &#x27;&lt;div&gt;Weights: no header/myVisWeights.bin found. Training starts from random He-init, like the device.&lt;/div&gt;&#x27;;
-  h += state.hadConfig ? &#x27;&lt;div&gt;myVisConfig.json found: class order and layout are taken from it. firmware v009 reads the class names from it at boot (count must equal VIS_NUM_CLASSES).&lt;/div&gt;&#x27;
+  h += state.hadConfig ? &#x27;&lt;div&gt;myVisConfig.json found: class order and layout are taken from it. firmware v010 reads the class names from it at boot (count must equal VIS_NUM_CLASSES).&lt;/div&gt;&#x27;
                        : &#x27;&lt;div&gt;No myVisConfig.json: class folders are sorted alphabetically. Keep numeric prefixes so this matches myClassLabels[].&lt;/div&gt;&#x27;;
   if (state.skipped) h += &#x27;&lt;div class=&quot;warn&quot;&gt;&#x27; + state.skipped + &#x27; files ignored: the firmware only counts .jpg and .JPG.&lt;/div&gt;&#x27;;
   $(&#x27;sourceInfo&#x27;).innerHTML = h;
@@ -1228,7 +1228,7 @@ async function liveLoop() {
 }
 
 // ---------- save ----------
-const configJson = () =&gt; JSON.stringify({ page: &#x27;vision-cnn-sd-trainer &#x27; + VERSION, firmware: &#x27;combined Vision+Sound firmware-v009&#x27;, input_size: IN, input_channels: 3, conv1_filters: C1F, conv2_filters: C2F, kernel_size: 3, classes: state.classes, weights_file: &#x27;header/myVisWeights.bin&#x27;, weights_floats: totalFloats(state.classes.length), note: &#x27;Class names are read by this page and by firmware-v009 at boot. NUM_CLASSES, INPUT_SIZE and filter counts are compile-time in the sketch.&#x27; }, null, 2);
+const configJson = () =&gt; JSON.stringify({ page: &#x27;vision-cnn-sd-trainer &#x27; + VERSION, firmware: &#x27;combined Vision+Sound firmware-v010&#x27;, input_size: IN, input_channels: 3, conv1_filters: C1F, conv2_filters: C2F, kernel_size: 3, classes: state.classes, weights_file: &#x27;header/myVisWeights.bin&#x27;, weights_floats: totalFloats(state.classes.length), note: &#x27;Class names are read by this page and by firmware-v010 at boot. NUM_CLASSES, INPUT_SIZE and filter counts are compile-time in the sketch.&#x27; }, null, 2);
 
 async function saveWeights() {
   const st = $(&#x27;saveStatus&#x27;);
@@ -1440,7 +1440,7 @@ async function serSend() {
   $(&#x27;serIn&#x27;).value = &#x27;&#x27;; $(&#x27;serIn&#x27;).focus();
 }
 
-// ---------- device debug frames (firmware-v009) ----------
+// ---------- device debug frames (firmware-v010) ----------
 let serPend = &#x27;&#x27;, serBeat = null;
 const dev = { f: null, tok: 0 };
 function serDebugSync() { if (ser.writer) ser.writer.write($(&#x27;serDebug&#x27;).checked ? &#x27;D&#x27; : &#x27;d&#x27;).catch(() =&gt; {}); }
@@ -1569,10 +1569,10 @@ log(&#x27;Vision CNN SD trainer &#x27; + VERSION + &#x27; ready. Layout &#x27; +
 &lt;/body&gt;
 &lt;/html&gt;
 "></iframe></section>
-  <section class="col s idle" id="colS"><h2>Sound (audio/ , mySndWeights.bin)</h2>
+  <section class="col s" id="colS"><h2>Sound (audio/ , mySndWeights.bin)</h2>
     <iframe id="fS" title="Sound trainer" allow="microphone; serial; clipboard-write; fullscreen" srcdoc="&lt;!DOCTYPE html&gt;
 &lt;html lang=&quot;en&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;UTF-8&quot;&gt;&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
-&lt;title&gt;XIAO ESP32-S3 wake-word trainer v009 — SD-card web page&lt;/title&gt;
+&lt;title&gt;XIAO ESP32-S3 wake-word trainer v010 — SD-card web page&lt;/title&gt;
 &lt;style&gt;
 :root{--bg:#10151c;--panel:#18202a;--line:#2a3745;--fg:#e6edf3;--dim:#8b9bab;--acc:#4fc3f7;--ok:#81c784;--warn:#ffb74d;--bad:#ef5350}
 @media (prefers-color-scheme:light){:root{--bg:#f4f6f8;--panel:#fff;--line:#cfd8e0;--fg:#1b2630;--dim:#5b6b7a;--acc:#0277bd;--ok:#2e7d32;--warn:#e65100;--bad:#c62828}}
@@ -1600,8 +1600,8 @@ details{margin:6px 0}summary{cursor:pointer;font-weight:600}
 #inspBox{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;max-width:900px;width:100%}
 .kbd{border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:.85em}
 &lt;/style&gt;&lt;/head&gt;&lt;body&gt;
-&lt;header&gt;&lt;h1&gt;🎤 XIAO ESP32-S3 Sense wake-word trainer &lt;small&gt;v009&lt;/small&gt;&lt;/h1&gt;
-&lt;div class=&quot;cap&quot;&gt;Pairs with &lt;b&gt;firmware-v009.ino&lt;/b&gt;. SD-card page: load the card’s &lt;code&gt;audio/&amp;lt;Class&amp;gt;/*.wav&lt;/code&gt;, add clips with the browser microphone, train the same Conv-Pool-Conv-Dense network as the device (plain JS, float32 weights), clean the dataset, and write &lt;code&gt;header/mySndWeights.bin&lt;/code&gt; + &lt;code&gt;header/mySndConfig.json&lt;/code&gt; back. No WebBLE, no flashing. Chrome or Edge on a desktop.&lt;/div&gt;&lt;/header&gt;
+&lt;header&gt;&lt;h1&gt;🎤 XIAO ESP32-S3 Sense wake-word trainer &lt;small&gt;v010&lt;/small&gt;&lt;/h1&gt;
+&lt;div class=&quot;cap&quot;&gt;Pairs with &lt;b&gt;firmware-v010.ino&lt;/b&gt;. SD-card page: load the card’s &lt;code&gt;audio/&amp;lt;Class&amp;gt;/*.wav&lt;/code&gt;, add clips with the browser microphone, train the same Conv-Pool-Conv-Dense network as the device (plain JS, float32 weights), clean the dataset, and write &lt;code&gt;header/mySndWeights.bin&lt;/code&gt; + &lt;code&gt;header/mySndConfig.json&lt;/code&gt; back. No WebBLE, no flashing. Chrome or Edge on a desktop.&lt;/div&gt;&lt;/header&gt;
 
 &lt;section id=&quot;s1&quot;&gt;&lt;h2&gt;1 · Data source&lt;/h2&gt;
 &lt;div class=&quot;row&quot;&gt;&lt;button class=&quot;main&quot; id=&quot;btnPickDir&quot;&gt;📂 Pick SD card folder (root of the card)&lt;/button&gt;&lt;button id=&quot;btnLoadZip&quot;&gt;Load .zip&lt;/button&gt;&lt;button id=&quot;btnLoadBin&quot;&gt;Load weights .bin…&lt;/button&gt;
@@ -1613,7 +1613,7 @@ details{margin:6px 0}summary{cursor:pointer;font-weight:600}
 &lt;div id=&quot;classTable&quot;&gt;&lt;/div&gt;
 &lt;div class=&quot;row&quot;&gt;&lt;input type=&quot;text&quot; id=&quot;newClassName&quot; placeholder=&quot;new class, e.g. 3Stop&quot;&gt;&lt;button id=&quot;btnAddClass&quot;&gt;Add class&lt;/button&gt;&lt;span class=&quot;cap&quot;&gt;Class names are folder names: keep the numeric prefix so the order stays 0,1,2…&lt;/span&gt;&lt;/div&gt;
 &lt;h3&gt;Lines to paste into the sketch&lt;/h3&gt;&lt;textarea id=&quot;fwLines&quot; rows=&quot;7&quot; readonly&gt;&lt;/textarea&gt;
-&lt;div class=&quot;cap&quot;&gt;Layout and class count are compile-time in the firmware; change them in the sketch and re-flash. The page writes the class list to &lt;code&gt;header/mySndConfig.json&lt;/code&gt;. Firmware v009 reads the class names from it at boot; the count must equal SND_NUM_CLASSES.&lt;/div&gt;
+&lt;div class=&quot;cap&quot;&gt;Layout and class count are compile-time in the firmware; change them in the sketch and re-flash. The page writes the class list to &lt;code&gt;header/mySndConfig.json&lt;/code&gt;. Firmware v010 reads the class names from it at boot; the count must equal SND_NUM_CLASSES.&lt;/div&gt;
 
 &lt;h3&gt;Record clips (browser microphone, 16 kHz, 1 s — like the device)&lt;/h3&gt;
 &lt;div class=&quot;row&quot;&gt;&lt;button id=&quot;btnMic&quot;&gt;🎤 Start microphone&lt;/button&gt;&lt;span id=&quot;micStatus&quot; class=&quot;cap&quot;&gt;&lt;/span&gt;
@@ -1673,21 +1673,21 @@ details{margin:6px 0}summary{cursor:pointer;font-weight:600}
 &lt;section id=&quot;s7&quot;&gt;&lt;h2&gt;7 · Console&lt;/h2&gt;&lt;textarea id=&quot;consoleLog&quot; rows=&quot;9&quot; readonly&gt;&lt;/textarea&gt;&lt;/section&gt;
 
 &lt;section id=&quot;s8&quot;&gt;&lt;h2&gt;8 · Serial monitor (Web Serial)&lt;/h2&gt;
-&lt;div class=&quot;row&quot;&gt;&lt;button id=&quot;btnSerConnect&quot;&gt;Connect&lt;/button&gt;&lt;button id=&quot;btnSerDisconnect&quot;&gt;Disconnect&lt;/button&gt;&lt;span id=&quot;serStatus&quot; class=&quot;cap&quot;&gt;not connected&lt;/span&gt;&lt;label&gt;&lt;input type=&quot;checkbox&quot; id=&quot;serDebug&quot;&gt; ask the device for debug frames (not supported by firmware v009; leave off)&lt;/label&gt;&lt;/div&gt;
+&lt;div class=&quot;row&quot;&gt;&lt;button id=&quot;btnSerConnect&quot;&gt;Connect&lt;/button&gt;&lt;button id=&quot;btnSerDisconnect&quot;&gt;Disconnect&lt;/button&gt;&lt;span id=&quot;serStatus&quot; class=&quot;cap&quot;&gt;not connected&lt;/span&gt;&lt;label&gt;&lt;input type=&quot;checkbox&quot; id=&quot;serDebug&quot;&gt; ask the device for debug frames (needs firmware v010)&lt;/label&gt;&lt;/div&gt;
 &lt;div class=&quot;cap&quot;&gt;115200 baud. Close the Arduino IDE serial monitor first; opening the port can reboot the board. Chrome or Edge only. A debug frame carries the raw 1 s audio (~43 KB of text): instant over native USB, about 4 s through a UART bridge.&lt;/div&gt;
 &lt;textarea id=&quot;serOut&quot; rows=&quot;8&quot; readonly&gt;&lt;/textarea&gt;
 &lt;div class=&quot;row&quot;&gt;&lt;input type=&quot;text&quot; id=&quot;serIn&quot; style=&quot;flex:1&quot; placeholder=&quot;text to send (newline appended)&quot;&gt;&lt;button id=&quot;btnSerSend&quot;&gt;Send&lt;/button&gt;&lt;/div&gt;
 &lt;h3&gt;Device view&lt;/h3&gt;
 &lt;div class=&quot;row&quot; style=&quot;align-items:flex-start&quot;&gt;&lt;div&gt;&lt;canvas id=&quot;devWave&quot; width=&quot;520&quot; height=&quot;90&quot;&gt;&lt;/canvas&gt;&lt;/div&gt;
 &lt;div&gt;&lt;canvas id=&quot;devModel&quot; width=&quot;128&quot; height=&quot;160&quot;&gt;&lt;/canvas&gt;&lt;div class=&quot;cap&quot; id=&quot;devModelCap&quot;&gt;&lt;/div&gt;&lt;label&gt;&lt;input type=&quot;checkbox&quot; id=&quot;devOver&quot; checked&gt; device activation overlay&lt;/label&gt;&lt;/div&gt;&lt;/div&gt;
-&lt;pre id=&quot;devInfo&quot;&gt;Waiting for a debug frame (run Infer on the device, or record a clip).&lt;/pre&gt;&lt;div id=&quot;devCompare&quot;&gt;&lt;/div&gt;&lt;/section&gt;
+&lt;pre id=&quot;devInfo&quot;&gt;Waiting for a debug frame (run Sound Infer on the device).&lt;/pre&gt;&lt;div id=&quot;devCompare&quot;&gt;&lt;/div&gt;&lt;/section&gt;
 
 &lt;div id=&quot;inspector&quot;&gt;&lt;div id=&quot;inspBox&quot;&gt;&lt;div class=&quot;row&quot;&gt;&lt;b&gt;Clip inspector&lt;/b&gt;&lt;button id=&quot;inspClose&quot;&gt;Close (Esc)&lt;/button&gt;&lt;/div&gt;&lt;div id=&quot;inspViewer&quot;&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;
-&lt;footer class=&quot;cap&quot;&gt;index-v009 · MIT · By Jeremy Ellis (hpssjellis). Written against firmware-v009.ino; hardware, microphone and browser audio behaviour must be verified on the bench.&lt;/footer&gt;
+&lt;footer class=&quot;cap&quot;&gt;index-v010 · MIT · By Jeremy Ellis (hpssjellis). Written against firmware-v010.ino; hardware, microphone and browser audio behaviour must be verified on the bench.&lt;/footer&gt;
 &lt;script&gt;
 /* ==CORE START== */
 &#x27;use strict&#x27;;
-// Everything here has NO DOM use, so Node can test it. It mirrors firmware-v009.ino line by line.
+// Everything here has NO DOM use, so Node can test it. It mirrors firmware-v010.ino line by line.
 const SR = 16000, CLIP = 16000;                    // 16 kHz, 1 s window (compile-time in the firmware)
 const DEFAULTS = { mb: 40, mf: 32, fft: 512, c1: 4, c2: 8, lr: 0.003, batch: 12, epochs: 20, valClips: 4, vadThr: 500, vadMs: 100 };
 const f32 = Math.fround;
@@ -1836,7 +1836,7 @@ function computeSpectrogram(pcm, L) {
       let e = 0;
       for (let b = loB; b &lt; ctrB &amp;&amp; b &lt;= n / 2; b++) { const w = f32(f32(b - D.lo[m]) / f32(f32(D.ctr[m] - D.lo[m]) + f32(1e-8))); e = f32(e + f32(w * D.power[b])); }
       for (let b = ctrB; b &lt; hiB &amp;&amp; b &lt;= n / 2; b++) { const w = f32(f32(D.hi[m] - b) / f32(f32(D.hi[m] - D.ctr[m]) + f32(1e-8))); e = f32(e + f32(w * D.power[b])); }
-      if (e &lt; 0) e = 0;                                   // firmware v009 bug fix (negative low-edge weights could give NaN)
+      if (e &lt; 0) e = 0;                                   // firmware v010 bug fix (negative low-edge weights could give NaN)
       const logE = f32(Math.log10(f32(e + f32(1e-6))));
       x[fr * mb + m] = logE;
       if (logE &lt; cmin) cmin = logE;
@@ -2104,7 +2104,7 @@ function classStats(conf) {
 /* ---------- mySndConfig.json ---------- */
 function buildConfig(classes, L, extra) {
   return JSON.stringify(Object.assign({ classes: classes.slice(), sample_rate: SR, clip_seconds: 1, mel_bins: L.mb, mel_frames: L.mf, fft_size: L.fft,
-    conv1_filters: L.c1, conv2_filters: L.c2, vad_threshold: DEFAULTS.vadThr, vad_window_ms: DEFAULTS.vadMs, saved_by: &#x27;index-v009.html&#x27; }, extra || {}), null, 2) + &#x27;\n&#x27;;
+    conv1_filters: L.c1, conv2_filters: L.c2, vad_threshold: DEFAULTS.vadThr, vad_window_ms: DEFAULTS.vadMs, saved_by: &#x27;index-v010.html&#x27; }, extra || {}), null, 2) + &#x27;\n&#x27;;
 }
 function parseConfig(text) {
   let j; try { j = JSON.parse(text); } catch (e) { return { error: e.message }; }
@@ -2204,8 +2204,9 @@ function parseFrame(line) {
 
 /* ==UI START== */
 const $ = id =&gt; document.getElementById(id);
+const DEFAULT_CLASSES = [&#x27;0unknown&#x27;, &#x27;1round&#x27;, &#x27;2square&#x27;];   // same names as the firmware&#x27;s compiled labels
 const S = {
-  classes: [&#x27;0Silence&#x27;, &#x27;1Yes&#x27;, &#x27;2No&#x27;], samples: [], nextId: 1,
+  classes: DEFAULT_CLASSES.slice(), samples: [], nextId: 1,
   L: { mb: DEFAULTS.mb, mf: DEFAULTS.mf, fft: DEFAULTS.fft, c1: DEFAULTS.c1, c2: DEFAULTS.c2 }, layoutVer: 0,
   net: null, unsaved: false, dir: null, zipMode: false, ignored: { nonWav: 0, short: 0 }, weightsMsg: &#x27;no weights file loaded&#x27;, cfgMsg: &#x27;none&#x27;,
   split: null, hist: { loss: [], acc: [], val: [] }, training: false, paused: false, stop: false,
@@ -2389,8 +2390,8 @@ function ingest(cfgText, clips, wbytes, label) {
   let cfg = null; if (cfgText) { cfg = parseConfig(cfgText); if (cfg.error) { log(&#x27;mySndConfig.json is not valid JSON (&#x27; + cfg.error + &#x27;), ignored&#x27;); cfg = null; } }
   const folders = [...clips.keys()].sort(); let classes = [];
   if (cfg &amp;&amp; cfg.classes &amp;&amp; cfg.classes.length &gt;= 2) { classes = cfg.classes.slice(); for (const f of folders) if (!classes.includes(f)) classes.push(f); S.cfgMsg = &#x27;mySndConfig.json found: class order from it&#x27;; }
-  else { classes = folders.slice(); S.cfgMsg = cfg ? &#x27;mySndConfig.json has no usable &quot;classes&quot;: sorted folder names used&#x27; : &#x27;no mySndConfig.json: sorted folder names used — keep numeric prefixes (0Silence, 1Yes …)&#x27;; }
-  if (classes.length &lt; 2) { for (const d of [&#x27;0Silence&#x27;, &#x27;1Yes&#x27;, &#x27;2No&#x27;]) if (!classes.includes(d) &amp;&amp; classes.length &lt; 3) classes.push(d); S.cfgMsg += &#x27; (fewer than 2 class folders found: defaults added)&#x27;; }
+  else { classes = folders.slice(); S.cfgMsg = cfg ? &#x27;mySndConfig.json has no usable &quot;classes&quot;: sorted folder names used&#x27; : &#x27;no mySndConfig.json: sorted folder names used — keep numeric prefixes (0unknown, 1round …)&#x27;; }
+  if (classes.length &lt; 2) { for (const d of DEFAULT_CLASSES) if (!classes.includes(d) &amp;&amp; classes.length &lt; 3) classes.push(d); S.cfgMsg += &#x27; (fewer than 2 class folders found: defaults added)&#x27;; }
   if (classes.length &gt; 8) { log(&#x27;WARNING: more than 8 class folders; only the first 8 are used&#x27;); classes = classes.slice(0, 8); }
   S.classes = classes;
   if (cfg &amp;&amp; cfg.L) { const L = { mb: cfg.L.mb, mf: cfg.L.mf, fft: cfg.L.fft, c1: cfg.L.c1, c2: cfg.L.c2 }; const e = layoutError(L, classes.length); if (!e) { S.L = L; S.layoutVer++; } else if (Object.values(L).some(v =&gt; v !== undefined)) log(&#x27;mySndConfig.json layout not adopted: &#x27; + e); }
@@ -2745,7 +2746,7 @@ function init() {
   window.addEventListener(&#x27;beforeunload&#x27;, e =&gt; { if (S.unsaved) { e.preventDefault(); e.returnValue = &#x27;&#x27;; } });
   $(&#x27;tLr&#x27;).value = DEFAULTS.lr; $(&#x27;tBatch&#x27;).value = DEFAULTS.batch; $(&#x27;tEpochs&#x27;).value = DEFAULTS.epochs; $(&#x27;tVn&#x27;).value = DEFAULTS.valClips;
   syncLayoutInputs(); renderAll(); setMicUI(); setTrainUI(); requestAnimationFrame(liveLoop);
-  log(&#x27;index-v009 ready. Hardware, microphone, camera and phone behaviour are not tested by the author of this file; tune MY_MIC_GAIN / the mic gain box on the bench.&#x27;);
+  log(&#x27;index-v010 ready. Hardware, microphone, camera and phone behaviour are not tested by the author of this file; tune MY_MIC_GAIN / the mic gain box on the bench.&#x27;);
 }
 window.addEventListener(&#x27;DOMContentLoaded&#x27;, init);
 /* ==UI END== */
@@ -2760,38 +2761,46 @@ $('seg').onclick = e => {
   $('main').className = b.dataset.m;
   for (const x of document.querySelectorAll('#seg button')) x.classList.toggle('on', x === b);
 };
-async function subDir(h, name) { try { return await h.getDirectoryHandle(name); } catch (e) { return null; } }
 // true when some class folder inside `dir` holds a file matching `re`
 async function hasFiles(dir, re) {
   for await (const [, c] of dir.entries()) if (c.kind === 'directory')
     for await (const [fn, f] of c.entries()) if (f.kind === 'file' && re.test(fn)) return true;
   return false;
 }
-// Both trainers use window.showDirectoryPicker when their own folder button is pressed.
-// Hand them the card already picked here, then press their folder button for them.
-function feed(frame, handle, btnId, go) {
-  const w = frame.contentWindow;
-  w.showDirectoryPicker = async () => handle;
-  if (go) w.document.getElementById(btnId).click();
+// ---- v010: card handling --------------------------------------------------
+// Names match the firmware's compiled labels, so a brand new card works with an unmodified sketch.
+const DEFAULT_CLASSES = ['0unknown', '1round', '2square'];
+// create <name>/ (and the default class folders when it has no class folder yet); returns its handle
+async function ensureSide(h, name) {
+  const d = await h.getDirectoryHandle(name, { create: true });
+  let n = 0;
+  for await (const [, c] of d.entries()) if (c.kind === 'directory') n++;
+  if (n === 0) for (const c of DEFAULT_CLASSES) await d.getDirectoryHandle(c, { create: true });
+  return d;
+}
+// Both trainers call window.showDirectoryPicker from their own folder button. Hand them the card
+// already picked here ONCE, then restore the real picker so their own buttons work again.
+function feed(frame, handle, btnId) {
+  const w = frame.contentWindow, orig = w.showDirectoryPicker;
+  w.showDirectoryPicker = async () => { w.showDirectoryPicker = orig; return handle; };
+  w.document.getElementById(btnId).click();
 }
 $('pick').onclick = async () => {
   if (!window.showDirectoryPicker) { $('status').textContent = 'This browser has no File System Access API. Use desktop Chrome or Edge.'; return; }
   let h; try { h = await window.showDirectoryPicker({ mode: 'readwrite' }); } catch (e) { return; }
   $('status').textContent = 'Reading ' + h.name + ' ...';
-  const img = await subDir(h, 'images'), aud = await subDir(h, 'audio');
-  const imgData = img ? await hasFiles(img, /\.jpg$/i) : false;
-  const audData = aud ? await hasFiles(aud, /\.wav$/i) : false;
-  $('colV').classList.toggle('idle', !img); $('colS').classList.toggle('idle', !aud);
-  feed($('fV'), h, 'btnDir', !!img);
-  feed($('fS'), h, 'btnPickDir', !!aud);
-  const part = (d, has, what) => d ? what + ': ' + (has ? 'found data' : 'folder is empty') : what + ': no folder';
-  if (!img && !aud) {
-    $('status').textContent = 'No images/ or audio/ folder in "' + h.name + '". Pick the root of the SD card (the folder that holds images/, audio/ and header/).';
-  } else {
-    $('status').textContent = h.name + ' -> ' + part(img, imgData, 'Vision (images/)') + ' | ' + part(aud, audData, 'Sound (audio/)') + '. Both trainers share this card; Save writes into header/.';
-    if (img && !aud) $('seg').querySelector('[data-m="v"]').click();
-    else if (aud && !img) $('seg').querySelector('[data-m="s"]').click();
-    else $('seg').querySelector('[data-m=""]').click();
-  }
+  let img, aud;
+  try {
+    await h.getDirectoryHandle('header', { create: true });
+    img = await ensureSide(h, 'images');
+    aud = await ensureSide(h, 'audio');
+  } catch (e) { $('status').textContent = 'Could not create folders on the card: ' + e.message; return; }
+  const imgData = await hasFiles(img, /\.jpg$/i), audData = await hasFiles(aud, /\.wav$/i);
+  feed($('fV'), h, 'btnDir');
+  feed($('fS'), h, 'btnPickDir');
+  $('status').textContent = h.name + ' -> Vision: ' + (imgData ? 'found images' : 'no images yet') +
+    ' | Sound: ' + (audData ? 'found clips' : 'no clips yet') +
+    '. Missing folders were created (default classes ' + DEFAULT_CLASSES.join(', ') + '). Save writes into header/.';
+  $('seg').querySelector('[data-m=""]').click();
 };
 </script></body></html>
